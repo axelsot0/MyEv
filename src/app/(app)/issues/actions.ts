@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { TZ_OFFSET } from "@/lib/metrics";
 import type { JiraStatus } from "@/lib/types";
@@ -95,6 +96,76 @@ export async function markPrMerged(formData: FormData) {
   const { error } = await supabase
     .from("pull_requests")
     .update({ status: "merged", merged_at: `${mergedAt}:00${TZ_OFFSET}` })
+    .eq("id", prId);
+  if (error) throw new Error(error.message);
+  revalidateIssue(issueId, sprintId);
+}
+
+export async function updateIssue(formData: FormData) {
+  const supabase = await createClient();
+  const issueId = String(formData.get("issue_id"));
+  const sprintId = String(formData.get("sprint_id"));
+  const jiraKey = String(formData.get("jira_key") ?? "").trim().toUpperCase();
+  const title = String(formData.get("title") ?? "").trim();
+  const type = String(formData.get("type") ?? "task");
+  const moduleId = String(formData.get("module_id") ?? "");
+  const pointsRaw = String(formData.get("points") ?? "");
+  const points =
+    type === "feature" && pointsRaw !== "" ? Number(pointsRaw) : null;
+  const committed = formData.get("committed") === "on";
+  if (!jiraKey || !title || !moduleId) throw new Error("Faltan campos");
+
+  const { error } = await supabase
+    .from("issues")
+    .update({
+      jira_key: jiraKey,
+      title,
+      type,
+      module_id: moduleId,
+      points,
+      committed,
+    })
+    .eq("id", issueId);
+  if (error) throw new Error(error.message);
+  revalidateIssue(issueId, sprintId);
+}
+
+export async function deleteIssue(formData: FormData) {
+  const supabase = await createClient();
+  const issueId = String(formData.get("issue_id"));
+  const sprintId = String(formData.get("sprint_id"));
+
+  const { error } = await supabase.from("issues").delete().eq("id", issueId);
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/sprints/${sprintId}`);
+  revalidatePath("/");
+  redirect(`/sprints/${sprintId}`);
+}
+
+export async function deleteBranch(formData: FormData) {
+  const supabase = await createClient();
+  const branchId = String(formData.get("branch_id"));
+  const issueId = String(formData.get("issue_id"));
+  const sprintId = String(formData.get("sprint_id"));
+
+  const { error } = await supabase
+    .from("branches")
+    .delete()
+    .eq("id", branchId);
+  if (error) throw new Error(error.message);
+  revalidateIssue(issueId, sprintId);
+}
+
+export async function deletePr(formData: FormData) {
+  const supabase = await createClient();
+  const prId = String(formData.get("pr_id"));
+  const issueId = String(formData.get("issue_id"));
+  const sprintId = String(formData.get("sprint_id"));
+
+  const { error } = await supabase
+    .from("pull_requests")
+    .delete()
     .eq("id", prId);
   if (error) throw new Error(error.message);
   revalidateIssue(issueId, sprintId);

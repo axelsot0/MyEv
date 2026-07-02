@@ -55,7 +55,15 @@ export default async function SprintDetailPage({
   return (
     <div className="mx-auto max-w-5xl space-y-8">
       <header>
-        <h1 className="text-2xl font-bold text-accent">{sprint.name}</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-accent">{sprint.name}</h1>
+          <Link
+            href={`/sprints/${sprint.id}/edit`}
+            className="rounded border border-border px-3 py-1.5 text-sm text-primary hover:bg-primary-soft/20"
+          >
+            Editar sprint
+          </Link>
+        </div>
         <p className="text-sm text-text-secondary">
           {fmtDate(sprint.start_date)} — {fmtDate(sprint.end_date)} · planning
           cerrado {fmtDateTime(sprint.planning_ended_at)}

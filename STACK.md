@@ -11,6 +11,7 @@ Decidido 2026-07-01. Criterio: deploy en Vercel + Supabase (preferencia de Axel)
 | Cliente DB | `@supabase/supabase-js` + `@supabase/ssr` | SSR helpers para App Router |
 | PDF | `@react-pdf/renderer` (pendiente confirmar) | Funciona en serverless Vercel; Puppeteer NO (peso) |
 | Deploy | Vercel | Variables de entorno = las de `.env.example` |
+| Repo | https://github.com/axelsot0/MyEv (personal, independiente de ORA) | rama `master` |
 
 ## Convenciones
 

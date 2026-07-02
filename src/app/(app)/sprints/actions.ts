@@ -43,6 +43,49 @@ export async function createSprint(formData: FormData) {
   redirect(`/sprints/${data.id}`);
 }
 
+export async function updateSprint(formData: FormData) {
+  const supabase = await createClient();
+  const sprintId = String(formData.get("sprint_id"));
+  const name = String(formData.get("name") ?? "").trim();
+  const start = String(formData.get("start_date") ?? "");
+  const end = String(formData.get("end_date") ?? "");
+  const planningEndedAt = String(formData.get("planning_ended_at") ?? "");
+  if (!sprintId || !name || !start || !end || !planningEndedAt) {
+    throw new Error("Faltan campos");
+  }
+
+  const { error } = await supabase
+    .from("sprints")
+    .update({
+      name,
+      start_date: start,
+      end_date: end,
+      planning_ended_at: `${planningEndedAt}:00${TZ_OFFSET}`,
+    })
+    .eq("id", sprintId);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/sprints");
+  revalidatePath(`/sprints/${sprintId}`);
+  revalidatePath("/");
+  redirect(`/sprints/${sprintId}`);
+}
+
+export async function deleteSprint(formData: FormData) {
+  const supabase = await createClient();
+  const sprintId = String(formData.get("sprint_id"));
+
+  const { error } = await supabase
+    .from("sprints")
+    .delete()
+    .eq("id", sprintId);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/sprints");
+  revalidatePath("/");
+  redirect("/sprints");
+}
+
 export async function createIssue(formData: FormData) {
   const supabase = await createClient();
   const {

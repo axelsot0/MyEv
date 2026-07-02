@@ -44,6 +44,13 @@ export function nowDOForInput(): string {
   return new Date(Date.now() - 4 * 3_600_000).toISOString().slice(0, 16);
 }
 
+// timestamptz -> valor para <input type="datetime-local"> en hora RD
+export function isoToDOInput(iso: string): string {
+  return new Date(new Date(iso).getTime() - 4 * 3_600_000)
+    .toISOString()
+    .slice(0, 16);
+}
+
 export function fmtDuration(ms: number): string {
   if (ms < 0) ms = 0;
   const totalHours = Math.floor(ms / 3_600_000);

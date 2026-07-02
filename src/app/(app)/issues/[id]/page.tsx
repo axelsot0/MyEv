@@ -15,11 +15,17 @@ import type { IssueWithRelations, Sprint } from "@/lib/types";
 import {
   createBranch,
   createPr,
+  deleteBranch,
+  deleteIssue,
+  deletePr,
   markBranchDeleted,
   markPrDeclined,
   markPrMerged,
+  updateIssue,
   updateJiraStatus,
 } from "../actions";
+import { ConfirmButton } from "@/components/ConfirmButton";
+import type { Module } from "@/lib/types";
 
 const inputClass =
   "w-full rounded border border-border bg-white/80 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary";
@@ -54,6 +60,12 @@ export default async function IssueDetailPage({
     .maybeSingle();
   if (!raw) notFound();
   const issue = raw as unknown as IssueFull;
+
+  const { data: modulesRaw } = await supabase
+    .from("modules")
+    .select("id, name")
+    .order("name");
+  const modules = (modulesRaw ?? []) as Module[];
 
   const completed = isCompleted(issue);
   const cycle = cycleTimeMs(issue, issue.sprints.planning_ended_at);
@@ -118,6 +130,93 @@ export default async function IssueDetailPage({
         <button className={smallButton}>Actualizar</button>
       </form>
 
+      <details className="rounded-lg border border-border bg-primary-soft/15 p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-accent">
+          Editar / eliminar incidencia
+        </summary>
+        <form
+          action={updateIssue}
+          className="mt-4 grid gap-3 md:grid-cols-2"
+        >
+          {hidden}
+          <div>
+            <label className="mb-1 block text-xs font-medium">Clave Jira</label>
+            <input
+              name="jira_key"
+              defaultValue={issue.jira_key}
+              className={inputClass}
+              required
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium">Titulo</label>
+            <input
+              name="title"
+              defaultValue={issue.title}
+              className={inputClass}
+              required
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium">Tipo</label>
+            <select name="type" defaultValue={issue.type} className={inputClass}>
+              <option value="feature">Feature</option>
+              <option value="bug">Bug</option>
+              <option value="task">Task</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium">
+              Puntos (solo Features)
+            </label>
+            <input
+              name="points"
+              type="number"
+              min={0}
+              defaultValue={issue.points ?? ""}
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium">Modulo</label>
+            <select
+              name="module_id"
+              defaultValue={issue.module_id}
+              className={inputClass}
+              required
+            >
+              {modules.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <label className="flex items-center gap-2 self-end pb-2 text-sm">
+            <input
+              type="checkbox"
+              name="committed"
+              defaultChecked={issue.committed}
+            />
+            Asumida en el sprint planning
+          </label>
+          <div className="md:col-span-2">
+            <button className="rounded bg-primary px-4 py-2 text-sm font-medium text-surface hover:opacity-90">
+              Guardar cambios
+            </button>
+          </div>
+        </form>
+        <form action={deleteIssue} className="mt-3">
+          {hidden}
+          <ConfirmButton
+            message={`Eliminar ${issue.jira_key} con sus ramas y PRs? No se puede deshacer.`}
+            className="rounded bg-danger px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+          >
+            Eliminar incidencia
+          </ConfirmButton>
+        </form>
+      </details>
+
       <section>
         <h2 className="mb-3 text-lg font-semibold text-accent">Ramas</h2>
         {issue.branches.length === 0 ? (
@@ -155,29 +254,45 @@ export default async function IssueDetailPage({
                     </td>
                     <td className="py-2 pr-3">{activeDays} dia(s)</td>
                     <td className="py-2 text-right">
-                      {!br.deleted_on && (
-                        <form
-                          action={markBranchDeleted}
-                          className="flex justify-end gap-2"
-                        >
+                      <div className="flex justify-end gap-2">
+                        {!br.deleted_on && (
+                          <form
+                            action={markBranchDeleted}
+                            className="flex gap-2"
+                          >
+                            {hidden}
+                            <input
+                              type="hidden"
+                              name="branch_id"
+                              value={br.id}
+                            />
+                            <input
+                              type="date"
+                              name="deleted_on"
+                              defaultValue={today}
+                              className={smallInput}
+                              required
+                            />
+                            <button className={smallButton}>
+                              Marcar eliminada
+                            </button>
+                          </form>
+                        )}
+                        <form action={deleteBranch}>
                           {hidden}
                           <input
                             type="hidden"
                             name="branch_id"
                             value={br.id}
                           />
-                          <input
-                            type="date"
-                            name="deleted_on"
-                            defaultValue={today}
-                            className={smallInput}
-                            required
-                          />
-                          <button className={smallButton}>
-                            Marcar eliminada
-                          </button>
+                          <ConfirmButton
+                            message={`Borrar el registro de la rama ${br.name}?`}
+                            className="rounded bg-danger px-2.5 py-1 text-xs font-medium text-white hover:opacity-90"
+                          >
+                            Borrar
+                          </ConfirmButton>
                         </form>
-                      )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -279,32 +394,52 @@ export default async function IssueDetailPage({
                       )}
                     </td>
                     <td className="py-2 text-right">
-                      {pr.status === "open" && (
-                        <div className="flex justify-end gap-2">
-                          <form
-                            action={markPrMerged}
-                            className="flex gap-2"
+                      <div className="flex justify-end gap-2">
+                        {pr.status === "open" && (
+                          <>
+                            <form
+                              action={markPrMerged}
+                              className="flex gap-2"
+                            >
+                              {hidden}
+                              <input
+                                type="hidden"
+                                name="pr_id"
+                                value={pr.id}
+                              />
+                              <input
+                                type="datetime-local"
+                                name="merged_at"
+                                defaultValue={nowInput}
+                                className={smallInput}
+                                required
+                              />
+                              <button className={smallButton}>Merge</button>
+                            </form>
+                            <form action={markPrDeclined}>
+                              {hidden}
+                              <input
+                                type="hidden"
+                                name="pr_id"
+                                value={pr.id}
+                              />
+                              <button className="rounded bg-warning px-2.5 py-1 text-xs font-medium text-white hover:opacity-90">
+                                Declinar
+                              </button>
+                            </form>
+                          </>
+                        )}
+                        <form action={deletePr}>
+                          {hidden}
+                          <input type="hidden" name="pr_id" value={pr.id} />
+                          <ConfirmButton
+                            message="Borrar el registro de este PR?"
+                            className="rounded bg-danger px-2.5 py-1 text-xs font-medium text-white hover:opacity-90"
                           >
-                            {hidden}
-                            <input type="hidden" name="pr_id" value={pr.id} />
-                            <input
-                              type="datetime-local"
-                              name="merged_at"
-                              defaultValue={nowInput}
-                              className={smallInput}
-                              required
-                            />
-                            <button className={smallButton}>Merge</button>
-                          </form>
-                          <form action={markPrDeclined}>
-                            {hidden}
-                            <input type="hidden" name="pr_id" value={pr.id} />
-                            <button className="rounded bg-danger px-2.5 py-1 text-xs font-medium text-white hover:opacity-90">
-                              Declinar
-                            </button>
-                          </form>
-                        </div>
-                      )}
+                            Borrar
+                          </ConfirmButton>
+                        </form>
+                      </div>
                     </td>
                   </tr>
                 );
