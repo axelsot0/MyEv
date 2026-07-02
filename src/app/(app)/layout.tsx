@@ -37,6 +37,9 @@ export default async function AppLayout({
           <Link href="/modules" className={linkClass}>
             Modulos
           </Link>
+          <Link href="/reports" className={linkClass}>
+            Reportes
+          </Link>
         </nav>
         <div className="border-t border-white/20 px-5 py-4 text-sm">
           <p className="mb-2 truncate font-medium">

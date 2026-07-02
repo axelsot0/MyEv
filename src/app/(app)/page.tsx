@@ -90,6 +90,36 @@ export default async function DashboardPage() {
   );
   const alerts = buildAlerts(issues, settings, sprint);
 
+  interface HistSprint {
+    id: string;
+    name: string;
+    issues: {
+      type: string;
+      points: number | null;
+      committed: boolean;
+      pull_requests: { status: string }[];
+    }[];
+  }
+  const { data: histRaw } = await supabase
+    .from("sprints")
+    .select("id, name, issues(type, points, committed, pull_requests(status))")
+    .order("start_date");
+  const history = ((histRaw ?? []) as unknown as HistSprint[]).map((s) => {
+    const assumed = s.issues
+      .filter((i) => i.committed && i.type === "feature")
+      .reduce((sum, i) => sum + (i.points ?? 0), 0);
+    const completed = s.issues
+      .filter(
+        (i) =>
+          i.type === "feature" &&
+          i.pull_requests.length > 0 &&
+          i.pull_requests.every((pr) => pr.status === "merged"),
+      )
+      .reduce((sum, i) => sum + (i.points ?? 0), 0);
+    return { id: s.id, name: s.name, assumed, completed };
+  });
+  const histMax = Math.max(1, ...history.flatMap((h) => [h.assumed, h.completed]));
+
   const moduleCount = new Map<string, number>();
   for (const i of issues) {
     const name = i.modules?.name ?? "Sin modulo";
@@ -190,6 +220,45 @@ export default async function DashboardPage() {
           )}
         </div>
       </section>
+
+      {history.length > 1 && (
+        <section className="rounded-lg border border-border bg-primary-soft/15 p-4">
+          <h2 className="mb-3 font-semibold text-accent">
+            Historico: carga y velocity por sprint
+          </h2>
+          <div className="space-y-3">
+            {history.map((h) => (
+              <div key={h.id}>
+                <p className="mb-1 text-sm font-medium">{h.name}</p>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <div className="h-3 flex-1 rounded bg-white/50">
+                      <div
+                        className="h-3 rounded bg-primary-soft"
+                        style={{ width: `${(h.assumed / histMax) * 100}%` }}
+                      />
+                    </div>
+                    <span className="w-28 text-xs text-text-secondary">
+                      {h.assumed} pts asumidos
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="h-3 flex-1 rounded bg-white/50">
+                      <div
+                        className="h-3 rounded bg-primary"
+                        style={{ width: `${(h.completed / histMax) * 100}%` }}
+                      />
+                    </div>
+                    <span className="w-28 text-xs text-text-secondary">
+                      {h.completed} pts velocity
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
