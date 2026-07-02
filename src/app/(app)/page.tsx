@@ -21,6 +21,12 @@ import {
   computeOutcomes,
 } from "@/lib/insights";
 import { fmtDuration } from "@/lib/metrics";
+import {
+  DonutGauge,
+  PercentBars,
+  ValueBars,
+  VelocityColumns,
+} from "@/components/charts";
 
 const DEFAULT_SETTINGS: AlertSettings = {
   developer_id: "",
@@ -105,12 +111,10 @@ export default async function DashboardPage() {
   const outcomes = computeOutcomes(histRows, today);
   const insights = computeInsights(histRows, outcomes);
   const history = outcomes.map((o) => ({
-    id: o.id,
     name: o.name,
     assumed: o.assumed,
-    completed: o.velocity,
+    velocity: o.velocity,
   }));
-  const histMax = Math.max(1, ...history.flatMap((h) => [h.assumed, h.completed]));
 
   const moduleCount = new Map<string, number>();
   for (const i of issues) {
@@ -185,14 +189,18 @@ export default async function DashboardPage() {
               label="Velocity promedio"
               value={insights.avgVelocity != null ? insights.avgVelocity.toFixed(1) : "—"}
             />
-            <MetricCard
-              label="Prob. de cerrar todo lo asumido"
-              value={
-                insights.fullCloseRate != null
-                  ? `${Math.round(insights.fullCloseRate)}%`
-                  : "—"
-              }
-            />
+            <div className="rounded-lg border border-border bg-primary-soft/15 p-4">
+              <p className="text-sm text-text-secondary">
+                Prob. de cerrar todo lo asumido
+              </p>
+              <div className="mt-1">
+                {insights.fullCloseRate != null ? (
+                  <DonutGauge pct={insights.fullCloseRate} />
+                ) : (
+                  <p className="text-3xl font-bold text-primary">—</p>
+                )}
+              </div>
+            </div>
             <MetricCard
               label="Mayor carga que cerraste completa"
               value={insights.bestFullCloseLoad ?? "—"}
@@ -217,27 +225,13 @@ export default async function DashboardPage() {
                   Aun sin sprints terminados con puntos.
                 </p>
               ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border text-left text-accent">
-                      <th className="py-1.5 pr-3">Carga (pts)</th>
-                      <th className="py-1.5 pr-3">Sprints</th>
-                      <th className="py-1.5">Cerraste todo</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {insights.byLoad.map((b) => (
-                      <tr key={b.assumed} className="border-b border-border/50">
-                        <td className="py-1.5 pr-3 font-medium">{b.assumed}</td>
-                        <td className="py-1.5 pr-3">{b.sprints}</td>
-                        <td className="py-1.5">
-                          {b.fullyClosed} de {b.sprints} (
-                          {Math.round((b.fullyClosed / b.sprints) * 100)}%)
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <PercentBars
+                  items={insights.byLoad.map((b) => ({
+                    label: `${b.assumed} pts asumidos`,
+                    pct: (b.fullyClosed / b.sprints) * 100,
+                    sub: `cerraste todo ${b.fullyClosed} de ${b.sprints} (${Math.round((b.fullyClosed / b.sprints) * 100)}%)`,
+                  }))}
+                />
               )}
             </div>
             <div className="rounded-lg border border-border bg-primary-soft/15 p-4">
@@ -249,26 +243,13 @@ export default async function DashboardPage() {
                   Aun sin features completadas con puntos.
                 </p>
               ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border text-left text-accent">
-                      <th className="py-1.5 pr-3">Historia</th>
-                      <th className="py-1.5 pr-3">Ciclo promedio</th>
-                      <th className="py-1.5">Cerradas</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {insights.cycleBySize.map((c) => (
-                      <tr key={c.points} className="border-b border-border/50">
-                        <td className="py-1.5 pr-3 font-medium">
-                          {c.points} pts
-                        </td>
-                        <td className="py-1.5 pr-3">{fmtDuration(c.avgMs)}</td>
-                        <td className="py-1.5">{c.count}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <ValueBars
+                  items={insights.cycleBySize.map((c) => ({
+                    label: `Historias de ${c.points} pts`,
+                    value: c.avgMs,
+                    display: `${fmtDuration(c.avgMs)} promedio · ${c.count} cerrada(s)`,
+                  }))}
+                />
               )}
             </div>
           </div>
@@ -323,37 +304,7 @@ export default async function DashboardPage() {
           <h2 className="mb-3 font-semibold text-accent">
             Historico: carga y velocity por sprint
           </h2>
-          <div className="space-y-3">
-            {history.map((h) => (
-              <div key={h.id}>
-                <p className="mb-1 text-sm font-medium">{h.name}</p>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <div className="h-3 flex-1 rounded bg-white/50">
-                      <div
-                        className="h-3 rounded bg-primary-soft"
-                        style={{ width: `${(h.assumed / histMax) * 100}%` }}
-                      />
-                    </div>
-                    <span className="w-28 text-xs text-text-secondary">
-                      {h.assumed} pts asumidos
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="h-3 flex-1 rounded bg-white/50">
-                      <div
-                        className="h-3 rounded bg-primary"
-                        style={{ width: `${(h.completed / histMax) * 100}%` }}
-                      />
-                    </div>
-                    <span className="w-28 text-xs text-text-secondary">
-                      {h.completed} pts velocity
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+          <VelocityColumns data={history} />
         </section>
       )}
     </div>
