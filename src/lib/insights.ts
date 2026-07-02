@@ -36,6 +36,10 @@ export interface SprintOutcome {
   daysEarly: number | null;
   // Fecha (RD) del ultimo merge de cualquier incidencia del sprint
   lastMergeDate: string | null;
+  // Dias desde el fin del planning hasta cerrar TODO lo asumido
+  daysToCloseAssumed: number | null;
+  // Promedio de dias por historia (feature) completada en el sprint
+  avgStoryDays: number | null;
 }
 
 const DAY_MS = 86_400_000;
@@ -96,6 +100,32 @@ export function computeOutcomes(
         ? toDODate(new Date(Math.max(...allMerges)).toISOString())
         : null;
 
+    const planningMs = new Date(s.planning_ended_at).getTime();
+
+    let daysToCloseAssumed: number | null = null;
+    if (fullyClosed) {
+      const merges = committed.flatMap((i) =>
+        i.pull_requests
+          .filter((pr) => pr.merged_at)
+          .map((pr) => new Date(pr.merged_at!).getTime()),
+      );
+      daysToCloseAssumed = (Math.max(...merges) - planningMs) / DAY_MS;
+    }
+
+    const storyCycles = s.issues
+      .filter((i) => i.type === "feature" && isDone(i))
+      .map((i) => {
+        const merges = i.pull_requests
+          .filter((pr) => pr.merged_at)
+          .map((pr) => new Date(pr.merged_at!).getTime());
+        return (Math.max(...merges) - planningMs) / DAY_MS;
+      })
+      .filter((d) => d >= 0);
+    const avgStoryDays =
+      storyCycles.length > 0
+        ? storyCycles.reduce((a, b) => a + b, 0) / storyCycles.length
+        : null;
+
     return {
       id: s.id,
       name: s.name,
@@ -110,6 +140,8 @@ export function computeOutcomes(
       closureDate,
       daysEarly,
       lastMergeDate,
+      daysToCloseAssumed,
+      avgStoryDays,
     };
   });
 }
@@ -136,6 +168,8 @@ export interface Insights {
   byLoad: LoadBucket[]; // probabilidad de cierre segun carga asumida
   cycleBySize: CycleBucket[]; // tiempo promedio de ciclo por tamano de historia
   avgCloseDaysEarly: number | null;
+  avgStoryCycleMs: number | null; // promedio global por historia completada
+  avgDaysToClose: number | null; // promedio de dias hasta cerrar lo asumido
 }
 
 export function computeInsights(
@@ -203,6 +237,16 @@ export function computeInsights(
     .map(([points, b]) => ({ points, avgMs: b.total / b.count, count: b.count }))
     .sort((a, b) => a.points - b.points);
 
+  const totalCycles = cycleBySize.reduce((a, c) => a + c.avgMs * c.count, 0);
+  const totalStories = cycleBySize.reduce((a, c) => a + c.count, 0);
+  const avgStoryCycleMs = totalStories > 0 ? totalCycles / totalStories : null;
+
+  const avgDaysToClose = avg(
+    outcomes
+      .map((o) => o.daysToCloseAssumed)
+      .filter((v): v is number => v != null),
+  );
+
   return {
     sprintCount: outcomes.length,
     finishedCount: finished.length,
@@ -213,6 +257,8 @@ export function computeInsights(
     byLoad,
     cycleBySize,
     avgCloseDaysEarly,
+    avgStoryCycleMs,
+    avgDaysToClose,
   };
 }
 

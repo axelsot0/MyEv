@@ -114,6 +114,8 @@ export default async function DashboardPage() {
     name: o.name,
     assumed: o.assumed,
     velocity: o.velocity,
+    closeDays: o.daysToCloseAssumed,
+    avgStoryDays: o.avgStoryDays,
   }));
 
   const moduleCount = new Map<string, number>();
@@ -204,6 +206,22 @@ export default async function DashboardPage() {
             <MetricCard
               label="Mayor carga que cerraste completa"
               value={insights.bestFullCloseLoad ?? "—"}
+            />
+            <MetricCard
+              label="Promedio por historia completada"
+              value={
+                insights.avgStoryCycleMs != null
+                  ? fmtDuration(insights.avgStoryCycleMs)
+                  : "—"
+              }
+            />
+            <MetricCard
+              label="Dias para cerrar todo lo asumido"
+              value={
+                insights.avgDaysToClose != null
+                  ? `${insights.avgDaysToClose.toFixed(1)}d`
+                  : "—"
+              }
             />
           </div>
           {insights.avgCloseDaysEarly != null && (
