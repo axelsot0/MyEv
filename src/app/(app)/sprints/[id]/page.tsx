@@ -7,6 +7,7 @@ import {
   fmtDate,
   fmtDateTime,
   isCompleted,
+  todayDO,
 } from "@/lib/metrics";
 import type { IssueWithRelations, Module, Sprint } from "@/lib/types";
 import { createIssue } from "../actions";
@@ -22,6 +23,71 @@ const JIRA_STATUSES = [
   "Inspection",
   "Done",
 ];
+
+function SprintRecord({
+  sprint,
+  issues,
+}: {
+  sprint: Sprint;
+  issues: IssueWithRelations[];
+}) {
+  const committed = issues.filter((i) => i.committed);
+  if (committed.length === 0) return null;
+
+  const DAY_MS = 86_400_000;
+  const dateMs = (d: string) => new Date(`${d}T00:00:00Z`).getTime();
+  const today = todayDO();
+  const pending = committed.filter((i) => !isCompleted(i)).length;
+
+  if (pending === 0) {
+    const merges = committed.flatMap((i) =>
+      i.pull_requests
+        .filter((pr) => pr.merged_at)
+        .map((pr) => new Date(pr.merged_at!).getTime()),
+    );
+    const closure = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Santo_Domingo",
+    }).format(new Date(Math.max(...merges)));
+    const daysEarly = Math.round(
+      (dateMs(sprint.end_date) - dateMs(closure)) / DAY_MS,
+    );
+    return (
+      <p className="mt-1 text-sm font-medium text-success">
+        Cerraste todo lo asumido el {fmtDate(closure)}
+        {daysEarly > 0
+          ? ` — ${daysEarly} dia(s) antes del fin del sprint`
+          : daysEarly === 0
+            ? " — justo al cierre"
+            : ` — ${-daysEarly} dia(s) despues del fin`}
+      </p>
+    );
+  }
+
+  if (today <= sprint.end_date && today >= sprint.start_date) {
+    const dayIndex =
+      Math.floor((dateMs(today) - dateMs(sprint.start_date)) / DAY_MS) + 1;
+    const totalDays =
+      Math.floor(
+        (dateMs(sprint.end_date) - dateMs(sprint.start_date)) / DAY_MS,
+      ) + 1;
+    return (
+      <p className="mt-1 text-sm font-medium text-info">
+        Dia {dayIndex} de {totalDays} del sprint · {pending} asumida(s) sin
+        cerrar
+      </p>
+    );
+  }
+
+  if (today > sprint.end_date) {
+    return (
+      <p className="mt-1 text-sm font-medium text-danger">
+        El sprint termino con {pending} asumida(s) sin cerrar
+      </p>
+    );
+  }
+
+  return null;
+}
 
 export default async function SprintDetailPage({
   params,
@@ -73,6 +139,7 @@ export default async function SprintDetailPage({
           completados: <strong>{completedPoints(issues)}</strong> ·
           incidencias: <strong>{issues.length}</strong>
         </p>
+        <SprintRecord sprint={sprint} issues={issues} />
       </header>
 
       <section>

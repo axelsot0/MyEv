@@ -14,6 +14,13 @@ import type {
   IssueWithRelations,
   Sprint,
 } from "@/lib/types";
+import {
+  INSIGHTS_SELECT,
+  type InsightSprintRow,
+  computeInsights,
+  computeOutcomes,
+} from "@/lib/insights";
+import { fmtDuration } from "@/lib/metrics";
 
 const DEFAULT_SETTINGS: AlertSettings = {
   developer_id: "",
@@ -90,34 +97,19 @@ export default async function DashboardPage() {
   );
   const alerts = buildAlerts(issues, settings, sprint);
 
-  interface HistSprint {
-    id: string;
-    name: string;
-    issues: {
-      type: string;
-      points: number | null;
-      committed: boolean;
-      pull_requests: { status: string }[];
-    }[];
-  }
   const { data: histRaw } = await supabase
     .from("sprints")
-    .select("id, name, issues(type, points, committed, pull_requests(status))")
+    .select(INSIGHTS_SELECT)
     .order("start_date");
-  const history = ((histRaw ?? []) as unknown as HistSprint[]).map((s) => {
-    const assumed = s.issues
-      .filter((i) => i.committed && i.type === "feature")
-      .reduce((sum, i) => sum + (i.points ?? 0), 0);
-    const completed = s.issues
-      .filter(
-        (i) =>
-          i.type === "feature" &&
-          i.pull_requests.length > 0 &&
-          i.pull_requests.every((pr) => pr.status === "merged"),
-      )
-      .reduce((sum, i) => sum + (i.points ?? 0), 0);
-    return { id: s.id, name: s.name, assumed, completed };
-  });
+  const histRows = (histRaw ?? []) as unknown as InsightSprintRow[];
+  const outcomes = computeOutcomes(histRows, today);
+  const insights = computeInsights(histRows, outcomes);
+  const history = outcomes.map((o) => ({
+    id: o.id,
+    name: o.name,
+    assumed: o.assumed,
+    completed: o.velocity,
+  }));
   const histMax = Math.max(1, ...history.flatMap((h) => [h.assumed, h.completed]));
 
   const moduleCount = new Map<string, number>();
@@ -177,6 +169,111 @@ export default async function DashboardPage() {
         <MetricCard label="Ramas activas" value={activeBranches.length} />
         <MetricCard label="Fuera de planning" value={unplanned.length} />
       </section>
+
+      {insights.finishedCount > 0 && (
+        <section className="space-y-4">
+          <h2 className="font-semibold text-accent">
+            Insights historicos · {insights.finishedCount} sprint(s)
+            terminado(s)
+          </h2>
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <MetricCard
+              label="Pts que acostumbras asumir"
+              value={insights.avgAssumed != null ? insights.avgAssumed.toFixed(1) : "—"}
+            />
+            <MetricCard
+              label="Velocity promedio"
+              value={insights.avgVelocity != null ? insights.avgVelocity.toFixed(1) : "—"}
+            />
+            <MetricCard
+              label="Prob. de cerrar todo lo asumido"
+              value={
+                insights.fullCloseRate != null
+                  ? `${Math.round(insights.fullCloseRate)}%`
+                  : "—"
+              }
+            />
+            <MetricCard
+              label="Mayor carga que cerraste completa"
+              value={insights.bestFullCloseLoad ?? "—"}
+            />
+          </div>
+          {insights.avgCloseDaysEarly != null && (
+            <p className="text-sm text-text-secondary">
+              Cuando cierras todo lo asumido, terminas en promedio{" "}
+              <strong className="text-success">
+                {insights.avgCloseDaysEarly.toFixed(1)} dia(s) antes
+              </strong>{" "}
+              del fin del sprint.
+            </p>
+          )}
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="rounded-lg border border-border bg-primary-soft/15 p-4">
+              <h3 className="mb-3 text-sm font-semibold text-accent">
+                Probabilidad de cierre segun carga asumida
+              </h3>
+              {insights.byLoad.length === 0 ? (
+                <p className="text-sm text-text-secondary">
+                  Aun sin sprints terminados con puntos.
+                </p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-accent">
+                      <th className="py-1.5 pr-3">Carga (pts)</th>
+                      <th className="py-1.5 pr-3">Sprints</th>
+                      <th className="py-1.5">Cerraste todo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {insights.byLoad.map((b) => (
+                      <tr key={b.assumed} className="border-b border-border/50">
+                        <td className="py-1.5 pr-3 font-medium">{b.assumed}</td>
+                        <td className="py-1.5 pr-3">{b.sprints}</td>
+                        <td className="py-1.5">
+                          {b.fullyClosed} de {b.sprints} (
+                          {Math.round((b.fullyClosed / b.sprints) * 100)}%)
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <div className="rounded-lg border border-border bg-primary-soft/15 p-4">
+              <h3 className="mb-3 text-sm font-semibold text-accent">
+                Que tan rapido cierras una historia
+              </h3>
+              {insights.cycleBySize.length === 0 ? (
+                <p className="text-sm text-text-secondary">
+                  Aun sin features completadas con puntos.
+                </p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-accent">
+                      <th className="py-1.5 pr-3">Historia</th>
+                      <th className="py-1.5 pr-3">Ciclo promedio</th>
+                      <th className="py-1.5">Cerradas</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {insights.cycleBySize.map((c) => (
+                      <tr key={c.points} className="border-b border-border/50">
+                        <td className="py-1.5 pr-3 font-medium">
+                          {c.points} pts
+                        </td>
+                        <td className="py-1.5 pr-3">{fmtDuration(c.avgMs)}</td>
+                        <td className="py-1.5">{c.count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="grid gap-6 md:grid-cols-2">
         <div className="rounded-lg border border-border bg-primary-soft/15 p-4">

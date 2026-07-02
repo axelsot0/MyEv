@@ -31,6 +31,9 @@ export default async function AppLayout({
           <Link href="/" className={linkClass}>
             Dashboard
           </Link>
+          <Link href="/calendar" className={linkClass}>
+            Calendario
+          </Link>
           <Link href="/sprints" className={linkClass}>
             Sprints
           </Link>
