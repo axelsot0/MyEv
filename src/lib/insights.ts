@@ -34,6 +34,8 @@ export interface SprintOutcome {
   // Fecha (RD) del ultimo merge de lo asumido, solo si cerro todo
   closureDate: string | null;
   daysEarly: number | null;
+  // Fecha (RD) del ultimo merge de cualquier incidencia del sprint
+  lastMergeDate: string | null;
 }
 
 const DAY_MS = 86_400_000;
@@ -84,6 +86,16 @@ export function computeOutcomes(
       );
     }
 
+    const allMerges = s.issues.flatMap((i) =>
+      i.pull_requests
+        .filter((pr) => pr.merged_at)
+        .map((pr) => new Date(pr.merged_at!).getTime()),
+    );
+    const lastMergeDate =
+      allMerges.length > 0
+        ? toDODate(new Date(Math.max(...allMerges)).toISOString())
+        : null;
+
     return {
       id: s.id,
       name: s.name,
@@ -97,6 +109,7 @@ export function computeOutcomes(
       fullyClosed,
       closureDate,
       daysEarly,
+      lastMergeDate,
     };
   });
 }

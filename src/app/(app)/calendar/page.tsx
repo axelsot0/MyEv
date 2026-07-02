@@ -48,20 +48,27 @@ function recordForDay(
   day: string,
   today: string,
 ): DayRecord | null {
-  // Barra superpuesta: hasta donde llego el sprint realmente.
-  // verde = cerraste todo (llega al dia del cierre)
+  // Barra superpuesta: hasta donde llego el trabajo realmente.
+  // verde = cerraste todo (para en el dia del cierre)
   // azul  = sprint en curso (llega a hoy)
-  // rojo  = termino sin cierre total (llega al final)
+  // rojo  = termino sin cierre total (para en el ultimo merge registrado)
   let end: string;
   let color: string;
   if (outcome.fullyClosed && outcome.closureDate) {
-    end = outcome.closureDate;
+    end =
+      outcome.closureDate < outcome.end_date
+        ? outcome.closureDate
+        : outcome.end_date;
     color = "bg-success";
   } else if (!outcome.finished) {
     end = today < outcome.end_date ? today : outcome.end_date;
     color = "bg-info";
   } else {
-    end = outcome.end_date;
+    if (!outcome.lastMergeDate) return null;
+    end =
+      outcome.lastMergeDate < outcome.end_date
+        ? outcome.lastMergeDate
+        : outcome.end_date;
     color = "bg-danger";
   }
   if (day < outcome.start_date || day > end) return null;
@@ -130,7 +137,7 @@ export default async function CalendarPage() {
           </span>
           <span className="flex items-center gap-1.5">
             <span className="inline-block h-1.5 w-6 rounded bg-danger" />
-            sin cierre total
+            trabajo hasta el ultimo merge (sin cierre total)
           </span>
         </div>
       </header>
